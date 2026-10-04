@@ -29,19 +29,12 @@ private enum Metrics {
     static let rowIconLeading: CGFloat = 4.5
     static let rowTextLeading: CGFloat = 61
     static let rowFontSize: CGFloat = 17
-
-    static let scrollerWidth: CGFloat = 11
-    static let scrollerTrailing: CGFloat = 3
-    static let scrollerTopInset: CGFloat = 40
-    static let scrollerBottomInset: CGFloat = 47.5
 }
 
 struct ContentView: View {
     @State private var query = ""
     @State private var apps: [AppEntry] = []
     @State private var selection = 0
-    @State private var scroll: ScrollGeometry?
-    @State private var scrollerStyle = NSScroller.preferredScrollerStyle
     @FocusState private var isFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
 
@@ -73,19 +66,21 @@ struct ContentView: View {
         return String(name.dropFirst(query.count))
     }
 
-    /// The list content is a fixed pitch per row; the panel grows to fit it, up to Spotlight's maximum height.
-    private var listHeight: CGFloat {
-        Metrics.listInset * 2 + Metrics.rowPitch * CGFloat(results.count)
-    }
- 
-    private var isScrolling: Bool {
-        Metrics.barHeight + 1 + listHeight > Metrics.maxHeight
+    private static let maxListHeight = Metrics.maxHeight - Metrics.barHeight - 1
+
+    private var rowsHeight: CGFloat {
+        Metrics.rowPitch * CGFloat(results.count)
     }
 
-    /// Spotlight follows System Settings › Appearance › Show scroll bars: an always-visible legacy scroller
-    /// ("Always", or "Automatically" with a mouse attached), otherwise a transient overlay one.
-    private var showsLegacyScroller: Bool {
-        isScrolling && scrollerStyle == .legacy
+    /// The padding is trimmed when the rows fit but the full padding wouldn't, so the list doesn't scroll just for it.
+    private var tightInset: CGFloat? {
+        let slack = Self.maxListHeight - rowsHeight
+        return (0..<Metrics.listInset * 2).contains(slack) ? slack / 2 : nil
+    }
+
+    /// The list content is a fixed pitch per row; the panel grows to fit it, up to Spotlight's maximum height.
+    private var listHeight: CGFloat {
+        min(rowsHeight + (tightInset ?? Metrics.listInset) * 2, Self.maxListHeight)
     }
 
     var body: some View {
@@ -195,6 +190,7 @@ struct ContentView: View {
 
     private var resultsList: some View {
         ScrollViewReader { proxy in
+            // The system scroller follows System Settings › Appearance › Show scroll bars, like Spotlight's.
             ScrollView {
                 VStack(spacing: 0) {
                     // Rows are identified by index, which is what `scrollTo(selection)` targets.
@@ -203,50 +199,15 @@ struct ContentView: View {
                     }
                 }
                 .padding(EdgeInsets(
-                    top: Metrics.listInset - 1,
+                    top: tightInset ?? Metrics.listInset - 1,
                     leading: Metrics.listInset,
-                    bottom: Metrics.listInset,
-                    // Spotlight leaves room for its legacy scroller when the list overflows.
-                    trailing: showsLegacyScroller ? 27.5 : Metrics.listInset
+                    bottom: tightInset ?? Metrics.listInset,
+                    trailing: Metrics.listInset
                 ))
             }
-            // The system overlay scroller matches Spotlight's, but its legacy one looks and behaves
-            // differently, so draw Spotlight's instead.
-            .scrollIndicators(scrollerStyle == .legacy ? .never : .automatic)
-            .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { scroll = $1 }
-            .overlay(alignment: .topTrailing) {
-                if showsLegacyScroller, let scroll {
-                    scroller(scroll)
-                }
-            }
-            .frame(height: min(listHeight, Metrics.maxHeight - Metrics.barHeight - 1))
+            .frame(height: listHeight)
             .onChange(of: selection) { proxy.scrollTo(selection) }
-            .onReceive(NotificationCenter.default.publisher(for: NSScroller.preferredScrollerStyleDidChangeNotification)) { _ in
-                scrollerStyle = NSScroller.preferredScrollerStyle
-            }
         }
-    }
-
-    /// An always-visible scroller measured from Spotlight's: a solid track with a proportional thumb.
-    private func scroller(_ scroll: ScrollGeometry) -> some View {
-        let viewport = scroll.containerSize.height
-        let content = max(scroll.contentSize.height, viewport)
-        let track = max(viewport - Metrics.scrollerTopInset - Metrics.scrollerBottomInset, 0)
-        let thumb = max(track * viewport / content, 20)
-        let progress = content > viewport ? min(max(scroll.contentOffset.y / (content - viewport), 0), 1) : 0
-        let isDark = colorScheme == .dark
-        let shape = Capsule()
-
-        return ZStack(alignment: .top) {
-            shape.fill(Color(white: isDark ? 20 / 255 : 0.85))
-            shape.fill(Color(white: isDark ? 124 / 255 : 0.55))
-                .frame(height: thumb)
-                .offset(y: (track - thumb) * progress)
-        }
-        .frame(width: Metrics.scrollerWidth, height: track)
-        .padding(.top, Metrics.scrollerTopInset)
-        .padding(.trailing, Metrics.scrollerTrailing)
-        .allowsHitTesting(false)
     }
 
     private func row(_ app: AppEntry, isSelected: Bool) -> some View {
