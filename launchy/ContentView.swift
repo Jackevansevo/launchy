@@ -44,6 +44,8 @@ struct ContentView: View {
             }
         }
         .frame(width: Metrics.width)
+        // Rows scrolling past the rounded bottom corners are clipped to the panel.
+        .clipShape(.rect(cornerRadius: Metrics.cornerRadius, style: .continuous))
         // Liquid Glass adapts to light/dark, the Liquid Glass slider and Reduce Transparency on its own,
         // as do semantic styles (.primary, .secondary).
         .glassEffect(.regular, in: .rect(cornerRadius: Metrics.cornerRadius, style: .continuous))
@@ -75,44 +77,64 @@ struct ContentView: View {
         .padding()
     }
 
-    /// A system list, which brings the scroll bar with it. It fills the panel, so the panel is full height whenever there
-    /// are results.
+    /// The rows scroll only when they don't fit, so the panel shrinks to fit a few results, as Spotlight's does.
     private var resultsList: some View {
-        ScrollViewReader { proxy in
-            List(results.indices, id: \.self) { index in
+        ViewThatFits(in: .vertical) {
+            rows
+                .padding(Self.listPadding)
+            ScrollViewReader { proxy in
+                // The system scroll bar, which follows System Settings › Appearance › Show scroll bars.
+                ScrollView {
+                    rows
+                }
+                .contentMargins(.horizontal, Self.listPadding.leading, for: .scrollContent)
+                .contentMargins(.top, Self.listPadding.top, for: .scrollContent)
+                .contentMargins(.bottom, Self.listPadding.bottom, for: .scrollContent)
+                // Keeps the scroll bar clear of the divider, the panel's edge and its rounded bottom corner.
+                .contentMargins(.top, 6, for: .scrollIndicators)
+                .contentMargins(.bottom, 14, for: .scrollIndicators)
+                .contentMargins(.trailing, 5, for: .scrollIndicators)
+                // The arrow keys move the selection from the search field, so keep it in view.
+                .onChange(of: selection) { proxy.scrollTo(selection) }
+            }
+        }
+    }
+
+    private static let listPadding = EdgeInsets(top: 6, leading: 10, bottom: 10, trailing: 10)
+
+    private var rows: some View {
+        VStack(spacing: 0) {
+            // Rows are identified by index, which is what `scrollTo(selection)` targets.
+            ForEach(results.indices, id: \.self) { index in
                 // A button, so clicking selects the row without taking focus from the search field. Like Spotlight, a
                 // click selects and a double-click opens.
                 Button {
                     selection = index
                     if NSApp.currentEvent?.clickCount == 2 { openSelection() }
                 } label: {
-                    HStack(spacing: 14) {
-                        Image(nsImage: results[index].icon)
-                            .resizable()
-                            .frame(width: Metrics.iconSize, height: Metrics.iconSize)
-                        Text(results[index].name)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(.rect) // The whole row is clickable, not just the icon and name.
+                    row(results[index], isSelected: index == selection)
                 }
                 .buttonStyle(.plain)
-                .font(.title2)
-                .padding(.vertical, 2)
-                .listRowSeparator(.hidden) // Spotlight has none.
-                // The list's own selection needs the list to have focus, which would take it from the search field, so the
-                // selected row draws its own highlight.
-                .listRowBackground(index == selection ? selectionHighlight : nil)
                 .accessibilityAddTraits(index == selection ? .isSelected : [])
+                .id(index)
             }
-            .scrollContentBackground(.hidden)
-            // Inset so the scroll bar sits clear of the divider and the panel's edge (SwiftUI resets the scroll view's
-            // `scrollerInsets`, so the list itself is inset). The list is drawn by AppKit, which SwiftUI clipping doesn't
-            // reach, so it also stops short of the rounded corners.
-            .padding(EdgeInsets(top: 6, leading: 0, bottom: 10, trailing: 5))
-            // The arrow keys move the selection from the search field, so keep it in view. Centring it lets the first
-            // and last rows scroll fully into view, padding included.
-            .onChange(of: selection) { proxy.scrollTo(selection, anchor: .center) }
         }
+    }
+
+    private func row(_ app: AppEntry, isSelected: Bool) -> some View {
+        HStack(spacing: 14) {
+            Image(nsImage: app.icon)
+                .resizable()
+                .frame(width: Metrics.iconSize, height: Metrics.iconSize)
+            Text(app.name)
+                .lineLimit(1)
+        }
+        .font(.title2)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { if isSelected { selectionHighlight } }
+        .contentShape(.rect) // The whole row is clickable, not just the icon and name.
     }
 
     /// A semantic fill rather than nested glass: on glass it's drawn vibrant, a translucent tint of what's behind the
@@ -120,7 +142,6 @@ struct ContentView: View {
     private var selectionHighlight: some View {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(.quaternary)
-            .padding(.horizontal, 10)
     }
 
     private func moveSelection(by offset: Int) -> KeyPress.Result {
