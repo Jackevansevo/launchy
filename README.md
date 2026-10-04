@@ -4,6 +4,17 @@ A Spotlight-style app launcher for macOS, built with SwiftUI and Liquid Glass.
 
 ![Launchy in light and dark mode](docs/screenshot.png)
 
+## Installation
+
+Download `launchy.zip` from the [Releases](https://github.com/Jackevansevo/launchy/releases) page, unzip it, and move `launchy.app` to your Applications folder.
+
+Launchy isn't notarized by Apple, so macOS will block it the first time you open it:
+
+- **macOS 14 and earlier:** right-click `launchy.app`, choose **Open**, then click **Open** again in the dialog.
+- **macOS 15 and later:** try to open the app once, then go to **System Settings → Privacy & Security**, scroll down, and click **Open Anyway** next to the message about Launchy.
+
+You only need to do this once.
+
 ## Usage
 
 - Press **⌥ Space** (or **⌘ Space**, from the menu bar icon's Shortcut menu) to show the launcher.
