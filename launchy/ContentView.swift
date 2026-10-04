@@ -3,31 +3,14 @@ import SwiftUI
 /// Sizes measured from screenshots of macOS Spotlight (in points).
 private enum Metrics {
     static let width: CGFloat = 640
-    static let barHeight: CGFloat = 56
     static let cornerRadius: CGFloat = 28
     static let maxHeight: CGFloat = 467
+    static let iconSize: CGFloat = 44
 
-    // Spotlight's shadow, fitted to its measured falloff: dark just below the panel, faint at the sides.
+    // Spotlight's shadow, fitted to its measured falloff below the panel.
     static let shadowOpacity: Double = 0.8
     static let shadowBlur: CGFloat = 11.5
     static let shadowOffset: CGFloat = 8
-    static let shadowSideInset: CGFloat = 8.5
-
-    static let glyphSize: CGFloat = 24
-    static let glyphLeading: CGFloat = 21
-    static let textLeading: CGFloat = 62
-    static let fontSize: CGFloat = 26
-    static let textTrailing: CGFloat = 20
-
-    static let dividerInset: CGFloat = 20
-    static let listInset: CGFloat = 10
-    static let rowPitch: CGFloat = 58
-    static let rowHighlightHeight: CGFloat = 55
-    static let rowCornerRadius: CGFloat = 14
-    static let rowIconSize: CGFloat = 43
-    static let rowIconLeading: CGFloat = 4.5
-    static let rowTextLeading: CGFloat = 61
-    static let rowFontSize: CGFloat = 17
 }
 
 struct ContentView: View {
@@ -35,19 +18,12 @@ struct ContentView: View {
     @State private var index = AppIndex()
     @State private var selection = 0
     @FocusState private var isFocused: Bool
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.controlActiveState) private var activeState
-
-    /// Fill for the selected row. Semantic styles get muted by the glass,
-    /// so this is an explicit overlay measured against Spotlight's.
-    private var highlightFill: Color {
-        colorScheme == .dark ? .white.opacity(0.22) : .black.opacity(0.1)
-    }
 
     private static let maxResults = 20
 
     /// Transparent space around the panel so its shadow isn't clipped by the window.
-    static let shadowMargin: CGFloat = 60
+    private static let shadowMargin: CGFloat = 60
 
     private var results: [AppEntry] {
         Array(AppIndex.search(query, in: index.apps).prefix(Self.maxResults))
@@ -57,30 +33,13 @@ struct ContentView: View {
         results.indices.contains(selection) ? results[selection] : nil
     }
 
-    private static let maxListHeight = Metrics.maxHeight - Metrics.barHeight - 1
-
-    private var rowsHeight: CGFloat {
-        Metrics.rowPitch * CGFloat(results.count)
-    }
-
-    /// The padding is trimmed when the rows fit but the full padding wouldn't, so the list doesn't scroll just for it.
-    private var tightInset: CGFloat? {
-        let slack = Self.maxListHeight - rowsHeight
-        return (0..<Metrics.listInset * 2).contains(slack) ? slack / 2 : nil
-    }
-
-    /// The list content is a fixed pitch per row; the panel grows to fit it, up to Spotlight's maximum height.
-    private var listHeight: CGFloat {
-        min(rowsHeight + (tightInset ?? Metrics.listInset) * 2, Self.maxListHeight)
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             searchBar
 
             if !results.isEmpty {
                 Divider()
-                    .padding(.horizontal, Metrics.dividerInset)
+                    .padding(.horizontal)
                 resultsList
             }
         }
@@ -88,7 +47,9 @@ struct ContentView: View {
         // Liquid Glass adapts to light/dark, the Liquid Glass slider and Reduce Transparency on its own,
         // as do semantic styles (.primary, .secondary).
         .glassEffect(.regular, in: .rect(cornerRadius: Metrics.cornerRadius, style: .continuous))
-        .background { panelShadow }
+        // The panel draws its own shadow: the window server only gives this never-activating panel the hard-edged
+        // inactive-window shadow. The glass casts it, so the text and icons on it don't get one.
+        .shadow(color: .black.opacity(Metrics.shadowOpacity), radius: Metrics.shadowBlur, y: Metrics.shadowOffset)
         // The window is sized for the tallest panel; the space below stays transparent when it's shorter.
         .frame(height: Metrics.maxHeight, alignment: .top)
         .padding(Self.shadowMargin)
@@ -99,105 +60,84 @@ struct ContentView: View {
         }
     }
 
-    /// The panel draws its own shadow: the window server only gives this never-activating panel the hard-edged
-    /// inactive-window shadow. It's masked to outside the panel so it doesn't darken the glass.
-    private var panelShadow: some View {
-        let shape = RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
-        return shape
-            .fill(.black.opacity(Metrics.shadowOpacity))
-            .padding(.horizontal, Metrics.shadowSideInset)
-            .offset(y: Metrics.shadowOffset)
-            .blur(radius: Metrics.shadowBlur)
-            .mask {
-                Rectangle()
-                    .padding(-Self.shadowMargin)
-                    .overlay { shape.blendMode(.destinationOut) }
-                    .compositingGroup()
-            }
-            .allowsHitTesting(false)
-    }
-
     private var searchBar: some View {
-        ZStack(alignment: .leading) {
+        HStack {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: Metrics.glyphSize, weight: .regular))
-                .foregroundStyle(.primary.opacity(0.7))
-                .padding(.leading, Metrics.glyphLeading)
-
+                .foregroundStyle(.secondary)
             TextField("Search", text: $query)
                 .textFieldStyle(.plain)
-                .font(.system(size: Metrics.fontSize))
                 .focused($isFocused)
                 .onSubmit(openSelection)
                 .onKeyPress(.downArrow) { moveSelection(by: 1) }
                 .onKeyPress(.upArrow) { moveSelection(by: -1) }
-                .padding(.leading, Metrics.textLeading)
-                .padding(.trailing, Metrics.textTrailing)
         }
-        .frame(height: Metrics.barHeight)
+        .font(.largeTitle)
+        .padding()
     }
 
+    /// A system list, which brings the scroll bar with it. It fills the panel, so the panel is full height whenever there
+    /// are results.
     private var resultsList: some View {
         ScrollViewReader { proxy in
-            // The system scroller follows System Settings › Appearance › Show scroll bars, like Spotlight's.
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Rows are identified by index, which is what `scrollTo(selection)` targets.
-                    ForEach(results.indices, id: \.self) { index in
-                        row(results[index], isSelected: index == selection)
+            List(results.indices, id: \.self) { index in
+                // A button, so clicking selects the row without taking focus from the search field. Like Spotlight, a
+                // click selects and a double-click opens.
+                Button {
+                    selection = index
+                    if NSApp.currentEvent?.clickCount == 2 { openSelection() }
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(nsImage: results[index].icon)
+                            .resizable()
+                            .frame(width: Metrics.iconSize, height: Metrics.iconSize)
+                        Text(results[index].name)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect) // The whole row is clickable, not just the icon and name.
                 }
-                .padding(EdgeInsets(
-                    top: tightInset ?? Metrics.listInset - 1,
-                    leading: Metrics.listInset,
-                    bottom: tightInset ?? Metrics.listInset,
-                    trailing: Metrics.listInset
-                ))
+                .buttonStyle(.plain)
+                .font(.title2)
+                .padding(.vertical, 2)
+                .listRowSeparator(.hidden) // Spotlight has none.
+                // The list's own selection needs the list to have focus, which would take it from the search field, so the
+                // selected row draws its own highlight.
+                .listRowBackground(index == selection ? selectionHighlight : nil)
+                .accessibilityAddTraits(index == selection ? .isSelected : [])
             }
-            .frame(height: listHeight)
-            .onChange(of: selection) { proxy.scrollTo(selection) }
+            .scrollContentBackground(.hidden)
+            // Inset so the scroll bar sits clear of the divider and the panel's edge (SwiftUI resets the scroll view's
+            // `scrollerInsets`, so the list itself is inset). The list is drawn by AppKit, which SwiftUI clipping doesn't
+            // reach, so it also stops short of the rounded corners.
+            .padding(EdgeInsets(top: 6, leading: 0, bottom: 10, trailing: 5))
+            // The arrow keys move the selection from the search field, so keep it in view. Centring it lets the first
+            // and last rows scroll fully into view, padding included.
+            .onChange(of: selection) { proxy.scrollTo(selection, anchor: .center) }
         }
     }
 
-    private func row(_ app: AppEntry, isSelected: Bool) -> some View {
-        ZStack(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: Metrics.rowCornerRadius, style: .continuous)
-                    .fill(highlightFill)
-                    .frame(height: Metrics.rowHighlightHeight)
-            }
-            Image(nsImage: app.icon)
-                .resizable()
-                .frame(width: Metrics.rowIconSize, height: Metrics.rowIconSize)
-                .padding(.leading, Metrics.rowIconLeading)
-            Text(app.name)
-                .font(.system(size: Metrics.rowFontSize))
-                .lineLimit(1)
-                .padding(.leading, Metrics.rowTextLeading)
-        }
-        .frame(maxWidth: .infinity, minHeight: Metrics.rowPitch, maxHeight: Metrics.rowPitch, alignment: .leading)
-        // Read each row as one element, so VoiceOver says the app's name and whether it's selected.
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private var panel: NSWindow? {
-        NSApp.windows.first { $0 is LauncherPanel }
+    /// A semantic fill rather than nested glass: on glass it's drawn vibrant, a translucent tint of what's behind the
+    /// panel like Spotlight's, where glass on glass brightens and gets a rim.
+    private var selectionHighlight: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.quaternary)
+            .padding(.horizontal, 10)
     }
 
     private func moveSelection(by offset: Int) -> KeyPress.Result {
         guard !results.isEmpty else { return .ignored }
-        selection = min(max(selection + offset, 0), results.count - 1)
+        // Wraps around at either end.
+        selection = (selection + offset + results.count) % results.count
         return .handled
     }
 
     private func openSelection() {
         guard let app = selectedApp else { return }
+        // Opening the app takes key status from the panel, which hides it.
         NSWorkspace.shared.openApplication(at: app.url, configuration: .init())
-        panel?.orderOut(nil)
     }
 }
 
 #Preview {
     ContentView()
 }
+

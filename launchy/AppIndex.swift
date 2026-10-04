@@ -71,7 +71,7 @@ struct AppEntry: Identifiable {
     }
 
     /// Where `name` starts with `query`, matched the same way as `search`.
-    static func prefixRange(of query: String, in name: String) -> Range<String.Index>? {
+    private static func prefixRange(of query: String, in name: String) -> Range<String.Index>? {
         name.range(of: query, options: [.anchored, .caseInsensitive, .diacriticInsensitive], locale: .current)
     }
 }
