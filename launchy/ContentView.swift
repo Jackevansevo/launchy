@@ -33,10 +33,11 @@ private enum Metrics {
 
 struct ContentView: View {
     @State private var query = ""
-    @State private var apps: [AppEntry] = []
+    @State private var index = AppIndex()
     @State private var selection = 0
     @FocusState private var isFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.controlActiveState) private var activeState
 
     /// Fill for the selected row and the autocomplete highlight. Semantic styles get muted by the glass,
     /// so this is an explicit overlay measured against Spotlight's.
@@ -50,7 +51,7 @@ struct ContentView: View {
     static let shadowMargin: CGFloat = 60
 
     private var results: [AppEntry] {
-        Array(AppIndex.search(query, in: apps).prefix(Self.maxResults))
+        Array(AppIndex.search(query, in: index.apps).prefix(Self.maxResults))
     }
 
     private var selectedApp: AppEntry? {
@@ -60,10 +61,10 @@ struct ContentView: View {
     /// The rest of the selected app's name, shown inline after the query like Spotlight's autocomplete.
     private var completion: String? {
         guard let name = selectedApp?.name,
-              name.lowercased().hasPrefix(query.lowercased()),
-              name.count > query.count
+              let typed = AppIndex.prefixRange(of: query, in: name),
+              typed.upperBound < name.endIndex
         else { return nil }
-        return String(name.dropFirst(query.count))
+        return String(name[typed.upperBound...])
     }
 
     private static let maxListHeight = Metrics.maxHeight - Metrics.barHeight - 1
@@ -88,9 +89,7 @@ struct ContentView: View {
             searchBar
 
             if !results.isEmpty {
-                Rectangle()
-                    .fill(.primary.opacity(0.15))
-                    .frame(height: 1)
+                Divider()
                     .padding(.horizontal, Metrics.dividerInset)
                 resultsList
             }
@@ -107,14 +106,8 @@ struct ContentView: View {
         // Spotlight hides the caret while autocompleting.
         .onChange(of: completion == nil) { _, showCaret in setCaretHidden(!showCaret) }
         // The panel keeps this view alive while hidden, so reset it on hide and refocus on show.
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { note in
-            guard note.object is LauncherPanel else { return }
-            query = ""
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { note in
-            guard note.object is LauncherPanel else { return }
-            apps = AppIndex.load() // Re-scan on every show so newly installed apps appear.
-            isFocused = true
+        .onChange(of: activeState, initial: true) {
+            if activeState == .key { isFocused = true } else { query = "" }
         }
     }
 
@@ -227,6 +220,9 @@ struct ContentView: View {
                 .padding(.leading, Metrics.rowTextLeading)
         }
         .frame(maxWidth: .infinity, minHeight: Metrics.rowPitch, maxHeight: Metrics.rowPitch, alignment: .leading)
+        // Read each row as one element, so VoiceOver says the app's name and whether it's selected.
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var panel: NSWindow? {
