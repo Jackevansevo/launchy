@@ -6,7 +6,7 @@ A Spotlight-style app launcher for macOS, built with SwiftUI and Liquid Glass.
 
 ## Usage
 
-- Press **⌥ Space** to show the launcher.
+- Press **⌥ Space** (or **⌘ Space**, from the menu bar icon's Shortcut menu) to show the launcher.
 - Type to search your apps, use the arrow keys to pick one, and press **Return** to open it.
 - Press **Esc** or click outside the launcher to hide it.
 
