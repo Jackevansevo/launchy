@@ -153,7 +153,9 @@ struct ContentView: View {
 
     private func openSelection() {
         guard let app = selectedApp else { return }
-        // Opening the app takes key status from the panel, which hides it.
+        // Hide explicitly: if the app is already frontmost, opening it won't take key status
+        // from the non-activating panel, so resignKey never fires.
+        NSApp.keyWindow?.orderOut(nil)
         NSWorkspace.shared.openApplication(at: app.url, configuration: .init())
     }
 }
