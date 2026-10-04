@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var apps: [AppEntry] = []
     @State private var selection = 0
     @State private var scroll: ScrollGeometry?
+    @State private var scrollerStyle = NSScroller.preferredScrollerStyle
     @FocusState private var isFocused: Bool
     @Environment(\.colorScheme) private var colorScheme
 
@@ -79,6 +80,12 @@ struct ContentView: View {
  
     private var isScrolling: Bool {
         Metrics.barHeight + 1 + listHeight > Metrics.maxHeight
+    }
+
+    /// Spotlight follows System Settings › Appearance › Show scroll bars: an always-visible legacy scroller
+    /// ("Always", or "Automatically" with a mouse attached), otherwise a transient overlay one.
+    private var showsLegacyScroller: Bool {
+        isScrolling && scrollerStyle == .legacy
     }
 
     var body: some View {
@@ -199,20 +206,24 @@ struct ContentView: View {
                     top: Metrics.listInset - 1,
                     leading: Metrics.listInset,
                     bottom: Metrics.listInset,
-                    // Spotlight leaves room for its scroller when the list overflows.
-                    trailing: isScrolling ? 27.5 : Metrics.listInset
+                    // Spotlight leaves room for its legacy scroller when the list overflows.
+                    trailing: showsLegacyScroller ? 27.5 : Metrics.listInset
                 ))
             }
-            // The system scroller looks and behaves differently, so draw Spotlight's instead.
-            .scrollIndicators(.never)
+            // The system overlay scroller matches Spotlight's, but its legacy one looks and behaves
+            // differently, so draw Spotlight's instead.
+            .scrollIndicators(scrollerStyle == .legacy ? .never : .automatic)
             .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { scroll = $1 }
             .overlay(alignment: .topTrailing) {
-                if isScrolling, let scroll {
+                if showsLegacyScroller, let scroll {
                     scroller(scroll)
                 }
             }
             .frame(height: min(listHeight, Metrics.maxHeight - Metrics.barHeight - 1))
             .onChange(of: selection) { proxy.scrollTo(selection) }
+            .onReceive(NotificationCenter.default.publisher(for: NSScroller.preferredScrollerStyleDidChangeNotification)) { _ in
+                scrollerStyle = NSScroller.preferredScrollerStyle
+            }
         }
     }
 
