@@ -12,9 +12,23 @@ struct AppEntry: Identifiable {
     let url: URL
     let name: String
     let icon: NSImage
-    var kind = Kind.app
+    let kind: Kind
     /// Other words that find this entry, besides its name.
-    var keywords: [String] = []
+    let keywords: [String]
+
+    /// The name and keywords without case or accents, folded once so each search is a plain comparison.
+    let foldedName: String
+    let foldedKeywords: [String]
+
+    init(url: URL, name: String, icon: NSImage, kind: Kind = .app, keywords: [String] = []) {
+        (self.url, self.name, self.icon, self.kind, self.keywords) = (url, name, icon, kind, keywords)
+        foldedName = Self.fold(name)
+        foldedKeywords = keywords.map(Self.fold)
+    }
+
+    static func fold(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
 
     var id: URL { url }
 }
@@ -42,6 +56,8 @@ struct AppEntry: Identifiable {
 
     @ObservationIgnored private let query = NSMetadataQuery()
     @ObservationIgnored private let settingsPanes = SettingsPanes.entries()
+    /// The last search, since the view reads its results several times for each change.
+    @ObservationIgnored private var lastSearch: (query: String, results: [AppEntry])?
 
     init() {
         query.predicate = NSPredicate(format: "%K == 'com.apple.application-bundle'", NSMetadataItemContentTypeKey)
@@ -62,6 +78,7 @@ struct AppEntry: Identifiable {
             .map(URL.init(fileURLWithPath:))
         let fileManager = FileManager.default
         let workspace = NSWorkspace.shared
+        lastSearch = nil
         apps = ((found + Self.extraApps.filter { fileManager.fileExists(atPath: $0.path) })
             .map { url in
                 AppEntry(
@@ -75,19 +92,23 @@ struct AppEntry: Identifiable {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    /// `search(_:in:)` over the installed apps, remembering the last query's results.
+    func search(_ query: String) -> [AppEntry] {
+        if let lastSearch, lastSearch.query == query { return lastSearch.results }
+        let results = Self.search(query, in: apps)
+        lastSearch = (query, results)
+        return results
+    }
+
     /// Case- and diacritic-insensitive "name contains query, or a keyword starts with it", with names that start with the
     /// query first, like Spotlight. Keywords match only from the start, so "wall" doesn't find Network by "Firewall".
     static func search(_ query: String, in apps: [AppEntry]) -> [AppEntry] {
         guard !query.isEmpty else { return [] }
+        let query = AppEntry.fold(query)
         // `sorted` is stable, so each group stays alphabetical.
         return apps.filter { app in
-            app.name.localizedStandardContains(query) || app.keywords.contains { prefixRange(of: query, in: $0) != nil }
+            app.foldedName.contains(query) || app.foldedKeywords.contains { $0.hasPrefix(query) }
         }
-            .sorted { prefixRange(of: query, in: $0.name) != nil && prefixRange(of: query, in: $1.name) == nil }
-    }
-
-    /// Where `name` starts with `query`, matched the same way as `search`.
-    private static func prefixRange(of query: String, in name: String) -> Range<String.Index>? {
-        name.range(of: query, options: [.anchored, .caseInsensitive, .diacriticInsensitive], locale: .current)
+            .sorted { $0.foldedName.hasPrefix(query) && !$1.foldedName.hasPrefix(query) }
     }
 }

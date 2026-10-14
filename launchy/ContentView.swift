@@ -26,7 +26,7 @@ struct ContentView: View {
     private static let shadowMargin: CGFloat = 60
 
     private var results: [AppEntry] {
-        Array(AppIndex.search(query, in: index.apps).prefix(Self.maxResults))
+        Array(index.search(query).prefix(Self.maxResults))
     }
 
     private var selectedApp: AppEntry? {
@@ -79,26 +79,29 @@ struct ContentView: View {
 
     /// The rows scroll only when they don't fit, so the panel shrinks to fit a few results, as Spotlight's does.
     private var resultsList: some View {
-        ViewThatFits(in: .vertical) {
-            rows
-                .padding(Self.listPadding)
-            ScrollViewReader { proxy in
-                // The system scroll bar, which follows System Settings › Appearance › Show scroll bars.
-                ScrollView {
-                    rows
-                }
-                .contentMargins(.horizontal, Self.listPadding.leading, for: .scrollContent)
-                .contentMargins(.top, Self.listPadding.top, for: .scrollContent)
-                .contentMargins(.bottom, Self.listPadding.bottom, for: .scrollContent)
-                // Keeps the scroll bar clear of the divider, the panel's edge and its rounded bottom corner.
-                .contentMargins(.top, 6, for: .scrollIndicators)
-                .contentMargins(.bottom, 14, for: .scrollIndicators)
-                .contentMargins(.trailing, 5, for: .scrollIndicators)
-                // The arrow keys move the selection from the search field, so keep it in view.
-                .onChange(of: selection) { proxy.scrollTo(selection) }
+        ScrollViewReader { proxy in
+            // The system scroll bar, which follows System Settings › Appearance › Show scroll bars.
+            ScrollView {
+                rows
             }
+            .contentMargins(.horizontal, Self.listPadding.leading, for: .scrollContent)
+            .contentMargins(.top, Self.listPadding.top, for: .scrollContent)
+            .contentMargins(.bottom, Self.listPadding.bottom, for: .scrollContent)
+            // Keeps the scroll bar clear of the divider, the panel's edge and its rounded bottom corner.
+            .contentMargins(.top, 6, for: .scrollIndicators)
+            .contentMargins(.bottom, 14, for: .scrollIndicators)
+            .contentMargins(.trailing, 5, for: .scrollIndicators)
+            // The arrow keys move the selection from the search field, so keep it in view.
+            .onChange(of: selection) { proxy.scrollTo(selection) }
         }
+        // As tall as the rows, up to the space left in the panel. Sizing it from the row height, rather than measuring
+        // the rows with ViewThatFits, builds them once instead of twice.
+        .frame(maxHeight: CGFloat(results.count) * Self.rowHeight + Self.listPadding.top + Self.listPadding.bottom)
     }
+
+    /// The icon plus the row's vertical padding.
+    private static let rowHeight = Metrics.iconSize + 2 * Self.rowPadding
+    private static let rowPadding: CGFloat = 6
 
     private static let listPadding = EdgeInsets(top: 6, leading: 10, bottom: 10, trailing: 10)
 
@@ -136,7 +139,7 @@ struct ContentView: View {
             }
         }
         .font(.title2)
-        .padding(.vertical, 6)
+        .padding(.vertical, Self.rowPadding)
         .padding(.horizontal, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background { if isSelected { selectionHighlight } }
