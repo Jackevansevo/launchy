@@ -128,6 +128,12 @@ struct ContentView: View {
                 .frame(width: Metrics.iconSize, height: Metrics.iconSize)
             Text(app.name)
                 .lineLimit(1)
+            if case .settingsPane = app.kind {
+                // Like Spotlight, so a pane isn't mistaken for an app of the same name (e.g. Siri).
+                Text("System Settings")
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
         .font(.title2)
         .padding(.vertical, 6)
@@ -156,7 +162,10 @@ struct ContentView: View {
         // Hide explicitly: if the app is already frontmost, opening it won't take key status
         // from the non-activating panel, so resignKey never fires.
         NSApp.keyWindow?.orderOut(nil)
-        NSWorkspace.shared.openApplication(at: app.url, configuration: .init())
+        switch app.kind {
+        case .app: NSWorkspace.shared.openApplication(at: app.url, configuration: .init())
+        case .settingsPane(let settingsURL): NSWorkspace.shared.open(settingsURL)
+        }
     }
 }
 
