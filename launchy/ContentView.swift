@@ -164,7 +164,7 @@ struct ContentView: View {
         NSApp.keyWindow?.orderOut(nil)
         switch app.kind {
         case .app: NSWorkspace.shared.openApplication(at: app.url, configuration: .init())
-        case .settingsPane(let settingsURL): NSWorkspace.shared.open(settingsURL)
+        case .settingsPane: NSWorkspace.shared.open(app.url)
         }
     }
 }

@@ -5,10 +5,10 @@ import Observation
 struct AppEntry: Identifiable {
     enum Kind {
         case app
-        /// Opened with its `x-apple.systempreferences:` URL.
-        case settingsPane(URL)
+        case settingsPane
     }
 
+    /// The app's bundle, or the pane's `x-apple.systempreferences:` URL.
     let url: URL
     let name: String
     let icon: NSImage
